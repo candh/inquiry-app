@@ -135,7 +135,7 @@ also [https://stackoverflow.com/questions/638868/getting-out-of-crud](https://st
 | GET    | /api/search/:query?sort=votes\|views\|oldest\|newest | Search **everything** with sort parameter                          |
 | GET    | /api/search/:query?limit=25&offset=50                | Limit returned **questions** to 25 and skip the first 50 questions |
 
-# Notes
+# Notes about the Client
 
 - React client needs some work
 - It was put together in a couple of days just before submission date
