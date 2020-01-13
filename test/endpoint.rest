@@ -1,0 +1,234 @@
+@url = http://localhost:4000/api
+GET {{url}}/questions?sort=createdAt
+
+### Create User
+@username1 = thomyorke
+@email1 = hello@happy.com
+@pswd1 = test
+POST {{url}}/users/register
+Content-Type: application/json
+
+{
+  "username" : "{{username1}}",
+  "email" : "{{email1}}",
+  "pswd" : "{{pswd1}}"
+}
+
+### Create another User
+@username2 = frank
+@email2 = frank@ocean.com
+@pswd2 = blonded
+POST {{url}}/users/register
+Content-Type: application/json
+
+{
+  "username" : "{{username2}}",
+  "email" : "{{email2}}",
+  "pswd" : "{{pswd2}}"
+}
+
+### Create another User
+@username3 = earl
+@email3 = earl@ss.com
+@pswd3 = darkshit
+POST {{url}}/users/register
+Content-Type: application/json
+
+{
+  "username" : "{{username3}}",
+  "email" : "{{email3}}",
+  "pswd" : "{{pswd3}}"
+}
+
+### Login User
+# @name user1 
+@token1 = {{user1.response.body.token}}
+POST {{url}}/users/login
+Content-Type: application/json
+
+{
+  "email" : "{{email1}}",
+  "pswd" : "{{pswd1}}"
+}
+
+### Login User2
+# @name user2 
+@token2 = {{user2.response.body.token}}
+POST {{url}}/users/login
+Content-Type: application/json
+
+{
+  "email" : "{{email2}}",
+  "pswd" : "{{pswd2}}"
+}
+
+### Login User3
+# @name user3 
+@token3 = {{user3.response.body.token}}
+POST {{url}}/users/login
+Content-Type: application/json
+
+{
+  "email" : "{{email3}}",
+  "pswd" : "{{pswd3}}"
+}
+
+### Delete user
+DELETE {{url}}/users
+Authorization: Bearer {{token1}} 
+
+### Create Question
+# @name createQuestion
+POST {{url}}/questions
+Content-Type: application/json
+Authorization: Bearer {{token1}} 
+
+{ 
+  "title" : "NodeJS Blocking code before executing, (a)sync",
+  "body" : "I have made a function that need to output an object (ApiSparkline). The data in the object is retrieved from a api call.",
+  "tags" : ["javascript", "node.js", "asynchronous"],
+  "category" : "Programming1"
+}
+
+### Answer a question
+# @name answerQuestion
+POST {{url}}/answers/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token2}} 
+Content-Type: application/json
+
+{
+  "body" : "You can use asynchronous api call using async/await. Currently, your code doesn't wait for api response"
+}
+
+### Search for a question 
+GET {{url}}/search?category=Programming1
+
+### Upvote Question
+POST {{url}}/questions/upvote/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Undo Upvote Question
+POST {{url}}/questions/upvote/undo/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Upvote an answer!!
+POST {{url}}/answers/upvote/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Undo upvote an answer
+POST {{url}}/answers/upvote/undo/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token1}}
+
+### Downvote a question
+POST {{url}}/questions/downvote/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token1}}
+
+### Undo Downvote a question
+POST {{url}}/questions/downvote/undo/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token1}}
+
+### Downvote answer
+POST {{url}}/answers/downvote/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token1}}
+
+### Undo Downvote answer
+POST {{url}}/answers/downvote/undo/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token1}}
+
+### Post a comment on a question
+# @name createComment
+POST {{url}}/questions/comments/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token3}}
+Content-Type: application/json
+
+{
+  "body": "this is preposterous"
+}
+
+### Delete the comment
+# DELETE {{url}}/questions/{{createQuestion.response.body._id}}/comments/{{createComment.response.body._id}}
+DELETE {{url}}/questions/{{createQuestion.response.body._id}}/comments/{{createComment.response.body._id}}
+Authorization: Bearer {{token2}}
+
+
+
+### Get the above created answer 
+GET {{url}}/answers/{{answerQuestion.response.body._id}}
+
+### Add a comment on the answer
+# @name createComment
+POST {{url}}/answers/comments/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "body": "@jwodder No shell programmer has ever been forced to work around such filenames."
+}
+
+### Delete your comment from the answer
+DELETE  {{url}}/answers/{{answerQuestion.response.body._id}}/comments/{{createComment.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Upvote a comment
+POST {{url}}/comments/upvote/{{createComment.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Undo Upvote a comment
+POST {{url}}/comments/undo/upvote/{{createComment.response.body._id}}
+Authorization: Bearer {{token2}}
+
+### Propose a question Edit
+# @name proposeUpdateQuestion
+PUT {{url}}/questions/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "title" : "runaway as fast you can",
+  "body": "everyone that I know",
+  "category": "Kanye West",
+  "tags": ["solo", "outro"]
+}
+
+
+### Approve a question edit
+POST {{url}}/questions/edit/approve/{{proposeUpdateQuestion.response.body.delta}}
+Authorization: Bearer {{token1}}
+
+### Get the question
+GET {{url}}/questions/{{createQuestion.response.body._id}}
+
+
+### Propose an edit to the answer
+# @name proposeUpdateAnswer
+PUT {{url}}/answers/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token1}} 
+Content-Type: application/json
+
+{
+  "body": "This is a new body and i like it very much and yeah i just really like it and adskfjajsdf ljasdlfj ."
+}
+
+### Propose an edit to the answer
+# @name proposeUpdateAnswer
+PUT {{url}}/answers/{{answerQuestion.response.body._id}}
+Authorization: Bearer {{token3}} 
+Content-Type: application/json
+
+{
+  "body": "This is a new body and i like it very much and yeah i just really like it and adskfjajsdf ljasdlfj ."
+}
+
+### Approve an edit to the answer
+POST {{url}}/answers/edit/approve/{{proposeUpdateAnswer.response.body.delta}}
+Authorization: Bearer {{token2}} 
+
+
+### Get all questions by user1
+GET {{url}}/users/questions/all
+Authorization: Bearer {{token2}} 
+
+###
+
+GET {{url}}/users/answers/all
+Authorization: Bearer {{token2}}
