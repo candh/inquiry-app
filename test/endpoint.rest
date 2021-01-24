@@ -4,7 +4,7 @@ GET {{url}}/questions?sort=createdAt
 ### Create User
 @username1 = thomyorke
 @email1 = hello@happy.com
-@pswd1 = test
+@pswd1 = hellod
 POST {{url}}/users/register
 Content-Type: application/json
 
@@ -77,6 +77,9 @@ Content-Type: application/json
 DELETE {{url}}/users
 Authorization: Bearer {{token1}} 
 
+### Get User
+GET {{url}}/users/{{user1.response.body._id}}
+
 ### Create Question
 # @name createQuestion
 POST {{url}}/questions
@@ -84,11 +87,15 @@ Content-Type: application/json
 Authorization: Bearer {{token1}} 
 
 { 
-  "title" : "NodeJS Blocking code before executing, (a)sync",
-  "body" : "I have made a function that need to output an object (ApiSparkline). The data in the object is retrieved from a api call.",
-  "tags" : ["javascript", "node.js", "asynchronous"],
-  "category" : "Programming1"
+  "title" : "C circular dependency",
+  "body" : "I have this problem with circular dependency in C, I looked around the other questions about this topic but really couldn't find the answer.",
+  "tags" : ["C", "include", "c-preprocessor", "dependency"],
+  "category" : "Programming"
 }
+
+### Get Questions
+# @name getQuestions
+GET {{url}}/questions
 
 ### Answer a question
 # @name answerQuestion
@@ -97,11 +104,19 @@ Authorization: Bearer {{token2}}
 Content-Type: application/json
 
 {
-  "body" : "You can use asynchronous api call using async/await. Currently, your code doesn't wait for api response"
+  "body" : "Seems like you shouldn't need to include anything in any of the files. A forward declaration of the relevant types should be sufficient"
 }
 
+
+### Get One Answer
+GET {{url}}/answers/{{answerQuestion.response.body._id}}
+
 ### Search for a question 
-GET {{url}}/search?category=Programming1
+GET {{url}}/search?category=Programming
+
+### GET Question ( just for checking )
+GET {{url}}/questions/{{createQuestion.response.body._id}}
+Authorization: Bearer {{token2}}
 
 ### Upvote Question
 POST {{url}}/questions/upvote/{{createQuestion.response.body._id}}
@@ -117,15 +132,15 @@ Authorization: Bearer {{token2}}
 
 ### Undo upvote an answer
 POST {{url}}/answers/upvote/undo/{{answerQuestion.response.body._id}}
-Authorization: Bearer {{token1}}
+Authorization: Bearer {{token2}}
 
 ### Downvote a question
 POST {{url}}/questions/downvote/{{createQuestion.response.body._id}}
-Authorization: Bearer {{token1}}
+Authorization: Bearer {{token2}}
 
 ### Undo Downvote a question
 POST {{url}}/questions/downvote/undo/{{createQuestion.response.body._id}}
-Authorization: Bearer {{token1}}
+Authorization: Bearer {{token2}}
 
 ### Downvote answer
 POST {{url}}/answers/downvote/{{answerQuestion.response.body._id}}
@@ -184,10 +199,10 @@ Authorization: Bearer {{token2}}
 Content-Type: application/json
 
 {
-  "title" : "runaway as fast you can",
-  "body": "everyone that I know",
-  "category": "Kanye West",
-  "tags": ["solo", "outro"]
+  "title" : "C circular dependencies",
+  "body": "I have this problem with circular dependencies in C, I looked around the other questions about this topic but really couldn't find the answer to my problem.",
+  "category": "Programming",
+  "tags": ["another-problem-which-can-be-solved-using-pen-and-paper"]
 }
 
 

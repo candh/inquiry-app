@@ -1,75 +1,89 @@
 const Comment = require("../../models/Comment");
 
-const ejwt = require("express-jwt");
+const jwt = require("express-jwt");
 const express = require("express");
 const router = express.Router();
 const process = require("process");
 const keys = {
-  jwtsecret: process.env.jwtsecret
+  jwtsecret: process.env.jwtsecret,
 };
 
+const ejwtauth = jwt({ secret: keys.jwtsecret, algorithms: ["HS256"] });
+
 const validateObjectID = require("mongoose").Types.ObjectId.isValid;
-const {
-  ErrorHandler,
-  processValidationErrors
-} = require("../../helpers/error");
+const { processValidationErrors } = require("../../helpers/error");
 const { param } = require("express-validator");
+
+router.get(
+  "/comments/:id",
+  param("id", "Invalid Object ID")
+    .escape()
+    .custom((value) => validateObjectID(value)),
+  processValidationErrors,
+  (req, res, next) => {
+    const comment = new Comment({ _id: req.params.id });
+    comment
+      .getComment()
+      .then((data) => res.send(data || []))
+      .catch(next);
+  }
+);
 
 router.post(
   "/comments/upvote/:id",
-  ejwt({ secret: keys.jwtsecret }), // auth required, obviously
+  ejwtauth, // auth required, obviously
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const comment = new Comment({
       _id: req.params.id,
-      user: req.user._id
+      user: req.user._id,
     });
     comment
       .upvote()
-      .then(data => res.send(data || []))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
 router.post(
   "/comments/undo/upvote/:id",
-  ejwt({ secret: keys.jwtsecret }), // auth required, obviously
+  ejwtauth, // auth required, obviously
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const comment = new Comment({
       _id: req.params.id,
-      user: req.user._id
+      user: req.user._id,
     });
     comment
       .undoUpvote()
-      .then(data => res.send(data || []))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
 router.delete(
   "/comments/:id",
-  ejwt({ secret: keys.jwtsecret }), // auth required, obviously
+  ejwtauth, // auth required, obviously
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const comment = new Comment({
       _id: req.params.id,
-      user: req.user._id
+      user: req.user._id,
     });
 
     comment
       .delete()
-      .then(data => res.send(data || []))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 

@@ -14,7 +14,7 @@ router.use([
   answersRouter,
   searchRouter,
   userRouter,
-  commentRouter
+  commentRouter,
 ]);
 
 module.exports = router;

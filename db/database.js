@@ -3,22 +3,28 @@ const logger = require("../helpers/logger");
 const process = require("process");
 
 class Database {
+  MONGODB_URI = process.env.MONGODB_URI;
+
   constructor() {
-    this._connect();
+    if (this.MONGODB_URI) {
+      this._connect();
+    } else {
+      throw new Error("No MONGODB_URI configured");
+    }
   }
 
   _connect() {
     mongoose
-      .connect(process.env.MONGODB_URI, {
+      .connect(this.MONGODB_URI, {
         useCreateIndex: true,
         useUnifiedTopology: true,
-        useNewUrlParser: true
+        useNewUrlParser: true,
       })
       .then(() => {
         logger.info("Database connection successful");
         logger.info(`Database name: ${mongoose.connection.name}`);
       })
-      .catch(err => {
+      .catch((err) => {
         logger.error(err);
         logger.info("Database connection error");
       });
@@ -27,6 +33,15 @@ class Database {
   close() {
     const conn = mongoose.connection;
     conn.close();
+  }
+
+  getConnection() {
+    return mongoose.connection;
+  }
+
+  dropAllDatabase() {
+    const conn = mongoose.connection;
+    return conn.dropDatabase();
   }
 }
 

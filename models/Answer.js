@@ -6,30 +6,30 @@ const answerschema = mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
+      ref: "User",
     },
     body: {
-      type: String
+      type: String,
       // text: true,
     },
     votes: {
       type: Number,
-      default: 0
+      default: 0,
     },
     comments: [{ type: mongoose.Schema.Types.ObjectId, ref: "Comment" }],
     accepted: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 
-answerschema.method("getAnswer", function(id) {
+answerschema.method("getAnswer", function () {
   return this.model("Question")
-    .findOne({ "answers._id": id })
+    .findOne({ "answers._id": this._id })
     .populate("answers.user", "username meta")
     .populate("answers.comments")
     .select("answers.$")

@@ -4,58 +4,53 @@ const Delta = require("../../models/History").Delta;
 const Question = require("../../models/Question");
 const User = require("../../models/User");
 
-const ejwt = require("express-jwt");
+const jwt = require("express-jwt");
 const express = require("express");
 const process = require("process");
+
 const keys = {
-  jwtsecret: process.env.jwtsecret
+  jwtsecret: process.env.jwtsecret,
 };
+
+const ejwtauth = jwt({ secret: keys.jwtsecret, algorithms: ["HS256"] });
 
 const router = express.Router();
 const validateObjectID = require("mongoose").Types.ObjectId.isValid;
-const {
-  ErrorHandler,
-  processValidationErrors
-} = require("../../helpers/error");
-const {
-  sanitizeQuery,
-  sanitizeParam,
-  sanitizeBody,
-  query,
-  param,
-  body
-} = require("express-validator");
+const { processValidationErrors } = require("../../helpers/error");
+const { param, body } = require("express-validator");
 
 /*
   --------
   Create
+
+  TODO: 
+    - don't let users answer a question more than once.
   --------
 */
 
 // Answers a question of qid
 router.post(
   "/answers/:qid",
-  ejwt({ secret: keys.jwtsecret }), // auth required, obviously
+  ejwtauth, // auth required, obviously
   param("qid", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
-  body("body").exists(),
+    .custom((value) => validateObjectID(value)),
+  body("body").isString().isLength({ min: 10 }),
   processValidationErrors,
   (req, res, next) => {
     let answer = new Answer({
       body: req.body.body,
-      user: req.user._id
+      user: req.user._id,
     });
     let question = new Question({
-      _id: req.params.qid
+      _id: req.params.qid,
     });
-    // TODO: fix this (attach _id to the Question idiot)
     question
       .answerQuestion(answer)
-      .then(data =>
+      .then((data) =>
         res.send({ statusCode: 200, message: "Answered", _id: data._id })
       )
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .catch(next);
   }
 );
 
@@ -70,14 +65,14 @@ router.get(
   "/answers/:id",
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
-    let answer = new Answer();
+    let answer = new Answer({ _id: req.params.id });
     answer
-      .getAnswer(req.params.id)
-      .then(data => res.send(data || []))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .getAnswer()
+      .then((data) => res.send(data || []))
+      .catch(next);
   }
 );
 
@@ -85,52 +80,54 @@ router.get(
   --------
   Update
   --------
+
+  propse a update to the answer.
 */
 
 router.put(
   "/answers/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
-  body("body").isString(),
+    .custom((value) => validateObjectID(value)),
+  body("body").isString().isLength({ min: 15 }),
   processValidationErrors,
   (req, res, next) => {
     const answer = new Answer({
       _id: req.params.id,
       user: req.user._id,
-      body: req.body.body
+      body: req.body.body,
     });
 
     const question = new Question();
     question
       .proposeUpdateOnAnswer(answer)
-      .then(data => res.send(data || []))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.send(data || []))
+      .catch(next);
   }
 );
 
 router.post(
   "/answers/edit/approve/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question();
     const delta = new Delta({
-      _id: req.params.id
+      _id: req.params.id,
     });
     const user = new User({
       _id: req.user._id,
       role: req.user.role,
-      username: req.user.username
+      username: req.user.username,
     });
     question
       .approveUpdateOnAnswer(delta, user)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.send(data))
+      .catch(next);
   }
 );
 
@@ -142,25 +139,25 @@ router.post(
 
 router.delete(
   "/answers/:qid/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("qid", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question({
-      _id: req.params.qid
+      _id: req.params.qid,
     });
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     question
       .deleteAnswer(answer)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
@@ -173,95 +170,79 @@ router.delete(
 // upvote an answer
 router.post(
   "/answers/upvote/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question();
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     question
       .upvoteAnswer(answer, req.user)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
 router.post(
   "/answers/upvote/undo/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question();
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     question
       .undoUpvoteAnswer(answer, req.user)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
-
-// undo upvote an answer
-// why?
-// router.post('/answers/upvote/undo/:id',
-//   ejwt({ secret: keys.jwtsecret }),
-//   param('id', 'Invalid Object ID').escape().custom(value => validateObjectID(value)),
-//   processValidationErrors,
-//   (req, res, next) => {
-//     const answer = new Answer({
-//       _id: req.params.id
-//     })
-//     answer.undoUpvoteAnswer(req.user)
-//       .then(data => res.send(data))
-//       .catch(err => next(new ErrorHandler(500, err.message)))
-//   }
-// )
 
 // downvote an answer
 router.post(
   "/answers/downvote/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question();
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     question
       .downvoteAnswer(answer, req.user)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
 // undo downvote an answer
 router.post(
   "/answers/downvote/undo/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
+    .custom((value) => validateObjectID(value)),
   processValidationErrors,
   (req, res, next) => {
     const question = new Question();
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     question
       .undoDownvoteAnswer(answer, req.user)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.sendStatus(204))
+      .catch(next);
   }
 );
 
@@ -273,54 +254,34 @@ router.post(
 
 router.post(
   "/answers/comments/:id",
-  ejwt({ secret: keys.jwtsecret }),
+  ejwtauth,
   param("id", "Invalid Object ID")
     .escape()
-    .custom(value => validateObjectID(value)),
-  body("body").exists(),
+    .custom((value) => validateObjectID(value)),
+  body("body").isString().isLength({ min: 10 }),
   processValidationErrors,
   (req, res, next) => {
     const answer = new Answer({
-      _id: req.params.id
+      _id: req.params.id,
     });
     const comment = new Comment({
       user: req.user._id,
-      body: req.body.body
+      body: req.body.body,
     });
     const question = new Question();
     question
       .addCommentOnAnswer(answer, comment)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
+      .then((data) => res.send(data))
+      .catch(next);
   }
 );
 
-router.delete(
-  "/answers/:aid/comments/:cid",
-  ejwt({ secret: keys.jwtsecret }),
-  param("aid", "Invalid Object ID")
-    .escape()
-    .custom(value => validateObjectID(value)),
-  param("cid", "Invalid Object ID")
-    .escape()
-    .custom(value => validateObjectID(value)),
-  processValidationErrors,
-  (req, res, next) => {
-    const answer = new Answer({
-      _id: req.params.aid
-    });
-    const comment = new Comment({
-      _id: req.params.cid
-    });
-    const user = new User({
-      _id: req.user._id
-    });
-    const question = new Question();
-    question
-      .deleteCommentFromAnswer(answer, user, comment)
-      .then(data => res.send(data))
-      .catch(err => next(new ErrorHandler(500, err.message)));
-  }
-);
+// DEPRECATED. DO NOT USE THIS
+// THIS IS NO GOOD
+// ** use DELETE /comments/:id **
+
+router.delete("/answers/:aid/comments/:cid", (req, res) => {
+  res.sendStatus(501);
+});
 
 module.exports = router;

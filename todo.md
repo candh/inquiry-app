@@ -1,5 +1,6 @@
 # todo
 
 todo list
-[] User authentication
-[] Make an API that implements most of the functionality
+
+- replace empty array responses with 404s 😁🌽
+- (histories) delta routes.

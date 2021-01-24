@@ -6,22 +6,23 @@ const Vote = require("./Vote");
 const History = require("./History").History;
 const Delta = require("./History").Delta;
 const jsondiffpatch = require("jsondiffpatch");
+const { APIError } = require("../helpers/error");
 
 const questionschema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
+      ref: "User",
     },
     title: {
-      type: String
+      type: String,
     },
     body: {
-      type: String
+      type: String,
     },
     votes: {
       type: Number,
-      default: 0
+      default: 0,
     },
     comments: [{ type: mongoose.Schema.Types.ObjectId, ref: "Comment" }],
     // answers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Answer', text: true }],
@@ -31,11 +32,11 @@ const questionschema = new mongoose.Schema(
     views: {
       type: Number,
       min: 0,
-      default: 0
-    }
+      default: 0,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 
@@ -45,9 +46,9 @@ questionschema.index({ title: "text", body: "text" });
 function buildQuery(params) {
   let query = this.model("Question").find();
   if (params.sort) {
-    const crit = {};
-    crit[params.sort] = params.order || "desc"; // TODO: really?
-    query = query.sort(crit);
+    query = query.sort({
+      [params.sort]: params.order || "desc",
+    });
   }
   if (params.limit) {
     query = query.limit(params.limit);
@@ -67,6 +68,8 @@ function buildQuery(params) {
   if (params.tags) {
     query = query.where("tags").in(params.tags);
   }
+
+  // TODO: a better way?
   if (!params.includeAnswers) {
     // FUCK
     query = query.select({
@@ -78,13 +81,14 @@ function buildQuery(params) {
       "answers.user": 0,
       "answers.votes": 0,
       "answers.question": 0,
-      "answers.__v": 0
+      "answers.__v": 0,
     });
   }
 
   if (params.searchText) {
     query = query.find({ $text: { $search: params.searchText } });
   }
+
   return query;
 }
 /*
@@ -98,7 +102,7 @@ function buildQuery(params) {
   Create
   --------
 */
-questionschema.method("createQuestion", function() {
+questionschema.method("createQuestion", function () {
   return this.model("Question").create(this.toObject());
 });
 
@@ -108,16 +112,18 @@ questionschema.method("createQuestion", function() {
   --------
 */
 
-questionschema.method("getQuestions", function(params) {
+questionschema.method("getQuestions", function (params) {
   const query = buildQuery.call(this, params);
   return query.populate("user", "username").exec();
 });
 
-questionschema.method("getQuestion", async function() {
+questionschema.method("getQuestion", async function () {
+  // TOOD: maybe something better than this view count increment?
   await this.model("Question").updateOne(
     { _id: this._id },
     { $inc: { views: 1 } }
   );
+
   return (
     this.model("Question")
       .findById(this._id)
@@ -132,7 +138,7 @@ questionschema.method("getQuestion", async function() {
   );
 });
 
-questionschema.method("getAllQuestionsByUser", function(user) {
+questionschema.method("getAllQuestionsByUser", function (user) {
   return this.model("Question")
     .find({ user: user._id })
     .populate("user", "username meta")
@@ -143,7 +149,7 @@ questionschema.method("getAllQuestionsByUser", function(user) {
     .sort("createdAt");
 });
 
-questionschema.method("getAllQuestionsAnsweredByUser", function(user) {
+questionschema.method("getAllQuestionsAnsweredByUser", function (user) {
   return this.model("Question")
     .find({ "answers.user": user._id })
     .populate("user", "username meta")
@@ -160,40 +166,36 @@ questionschema.method("getAllQuestionsAnsweredByUser", function(user) {
   --------
 */
 
-questionschema.method("proposeUpdate", async function(user) {
-  const res = {};
-  const orig = await this.model("Question")
-    .findById(this._id)
-    .catch(err => {
-      throw err;
-    });
+questionschema.method("proposeUpdate", async function (user) {
+  // find the original question
+  const orig = await this.model("Question").findById(this._id);
+
+  // didn't wanted to do Object.assign
+  // i think that would copy over more than we need
+
   const proposed = {
     body: this.body,
     title: this.title,
     category: this.category,
-    tags: this.tags
+    tags: this.tags,
   };
+
   // xorig meaning, extracted properties from original
   const xorig = {
     body: orig.body,
     title: orig.title,
     category: orig.category,
-    tags: orig.tags
+    tags: orig.tags,
   };
 
   const computedDelta = jsondiffpatch.diff(xorig, proposed);
   if (!computedDelta || computedDelta == undefined) {
     // no need to do anything
-    const err = new Error("No changes yar");
-    err.statusCode = 400;
-    throw err;
+    throw new APIError(400, "No changes");
   }
 
   // model delta
-  const mdelta = new Delta({
-    delta: computedDelta,
-    proposer: user._id
-  });
+  const mdelta = new Delta({ delta: computedDelta, proposer: user._id });
 
   if (
     orig.user.equals(user._id) ||
@@ -204,92 +206,78 @@ questionschema.method("proposeUpdate", async function(user) {
     // immediately, or in other words, approve
     mdelta.approver = user._id;
     mdelta.approvedAt = new Date();
+
     orig.body = proposed.body;
     orig.title = proposed.title;
     orig.category = proposed.category;
     orig.tags = proposed.tags;
-    res.message = "Updated";
-    await orig.save().catch(err => {
-      throw err;
-    });
+
+    // save
+    await orig.save();
   }
 
   // get the history associated with this post
-  let history = await History.findOne({ post: this._id }).catch(err => {
-    throw err;
-  });
+  let history = await History.findOne({ post: this._id });
+
   // if there is a history, add a delta to the deltas
   if (history) {
     const check = await History.findOne({
       post: this._id,
       "deltas.proposer": user._id,
-      "deltas.approvedAt": { $exists: false }
-    }).catch(err => {
-      throw err;
+      "deltas.approvedAt": { $exists: false },
     });
 
     if (check == null) {
       history.deltas.push(mdelta);
     } else {
-      const err = new Error("Await for previous one to be approved");
-      err.statusCode = 400;
-      throw err;
+      throw new APIError(400, "Await for previous one to be approved");
     }
   } else {
     history = new History({
       deltas: [mdelta],
       post: this._id,
       original: xorig,
-      onModel: "Question"
+      onModel: "Question",
     });
   }
 
-  await history.save().catch(err => {
-    throw err;
-  });
+  await history.save();
+
   // returns the history id of the current question
   // and the id of the delta that was just inserted
-  res.history = history._id;
-  res.delta = mdelta._id;
-  return res;
+  return { history: history._id, delta: mdelta._id, msg: "Ok." };
 });
 
-questionschema.method("approveUpdate", async function(delta, user) {
+questionschema.method("approveUpdate", async function (delta, user) {
   // deltas.$ gets the only delta that matched the id
   // we could populate the History model but lets keep it simple
   const history = await History.findOne(
     { "deltas._id": delta._id },
     { "deltas.$": 1, post: 1 }
-  ).catch(err => {
-    throw err;
-  });
+  );
 
   if (history && history != null) {
-    // be careful, an unauthenticated used can run these 3 queries, just by sitting there
     const question = await this.model("Question").findOne({
-      _id: history.post
+      _id: history.post,
     });
-    const op = await User.findById(question.user)
-      .select("-pswd")
-      .catch(err => {
-        throw err;
-      });
+
+    const op = await User.findById(question.user).select("-pswd");
 
     if (user.role == "Admin" || user.role == "Mod" || user._id == op._id) {
       const mdelta = history.deltas[0]; // can't believe im doing this in 2019
       const delta = mdelta.delta;
+
       if (mdelta.approvedAt) {
         // it means it has already been approved
-        const err = new Error("Already approved");
-        err.statusCode = 400;
-        throw err;
+        throw new APIError(400, "Already approved");
       }
+
       // if authorized, now we can apply the delta
       const patched = {
         body: question.body,
         title: question.title,
         category: question.category,
-        tags: question.tags
+        tags: question.tags,
       };
 
       jsondiffpatch.patch(patched, delta);
@@ -299,9 +287,7 @@ questionschema.method("approveUpdate", async function(delta, user) {
       question.tags = patched.tags;
 
       // approve/save the question
-      await question.save().catch(err => {
-        throw err;
-      });
+      await question.save();
 
       // also update the delta now
       await History.updateOne(
@@ -309,23 +295,17 @@ questionschema.method("approveUpdate", async function(delta, user) {
         {
           $set: {
             "deltas.$.approver": user._id,
-            "deltas.$.approvedAt": new Date()
-          }
+            "deltas.$.approvedAt": new Date(),
+          },
         }
-      ).catch(err => {
-        throw err;
-      });
+      );
 
       return question;
     } else {
-      const err = new Error("You cannot approve this edit");
-      err.statusCode = 404;
-      throw err;
+      throw new APIError(400, "You cannot approve this edit");
     }
   } else {
-    const err = new Error("No edits to approve");
-    err.statusCode = 404;
-    throw err;
+    throw new APIError(400, "No edits to approve");
   }
 });
 
@@ -335,7 +315,7 @@ questionschema.method("approveUpdate", async function(delta, user) {
   --------
 */
 
-questionschema.method("delete", function() {
+questionschema.method("delete", function () {
   return this.model("Question").deleteOne({ _id: this._id });
 });
 
@@ -345,7 +325,7 @@ questionschema.method("delete", function() {
   --------
 */
 
-questionschema.method("upvote", async function(user) {
+questionschema.method("upvote", async function (user) {
   const query = this.model("Question").updateOne(
     { _id: this._id },
     { $inc: { votes: 1 } }
@@ -356,67 +336,55 @@ questionschema.method("upvote", async function(user) {
     const firstCheck = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { questionDownvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (firstCheck.nModified === 1) {
-      await query.exec().catch(err => {
-        throw err;
-      });
+      // if it was downvoted, undo that.
+      await query.exec();
     }
 
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $addToSet: { questionUpvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (res.nModified === 1) {
       // update (increment) the votes on this question
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
+
     return res;
   } else {
     const vote = new Vote({
-      questionUpvotes: [this._id]
+      questionUpvotes: [this._id],
     });
-    await vote.save().catch(err => {
-      throw err;
-    });
+    await vote.save();
     user.meta.votes = vote._id;
-    await user.save().catch(err => {
-      throw err;
-    });
-    return query.exec();
+    await user.save();
+    return await query.exec();
   }
 });
 
-questionschema.method("undoUpvote", async function(user) {
+questionschema.method("undoUpvote", async function (user) {
   user = await User.findById(user._id).select("meta.votes");
+
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { questionUpvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (res.nModified === 1) {
       // update (decrement) the votes on this question
-      await this.model("Question")
-        .updateOne({ _id: this._id }, { $inc: { votes: -1 } })
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Question").updateOne(
+        { _id: this._id },
+        { $inc: { votes: -1 } }
+      );
     }
-    return res;
-  } else {
-    return { ok: 0 };
   }
 });
 
-questionschema.method("downvote", async function(user) {
+questionschema.method("downvote", async function (user) {
   const query = this.model("Question").updateOne(
     { _id: this._id },
     { $inc: { votes: -1 } }
@@ -427,65 +395,47 @@ questionschema.method("downvote", async function(user) {
     const firstCheck = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { questionUpvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (firstCheck.nModified === 1) {
       // update (decrement) the votes on this question
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
 
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $addToSet: { questionDownvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (res.nModified === 1) {
       // update (decrement) the votes on this question
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
     return res;
   } else {
     const vote = new Vote({
-      questionDownvotes: [this._id]
+      questionDownvotes: [this._id],
     });
-    await vote.save().catch(err => {
-      throw err;
-    });
+    await vote.save();
     user.meta.votes = vote._id;
-    await user.save().catch(err => {
-      throw err;
-    });
-
-    return query.exec();
+    await user.save();
+    return await query.exec();
   }
 });
 
-questionschema.method("undoDownvote", async function(user) {
+questionschema.method("undoDownvote", async function (user) {
   user = await User.findById(user._id).select("meta.votes");
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { questionDownvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (res.nModified === 1) {
       // update (decrement) the votes on this question
-      await this.model("Question")
-        .updateOne({ _id: this._id }, { $inc: { votes: 1 } })
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Question").updateOne(
+        { _id: this._id },
+        { $inc: { votes: 1 } }
+      );
     }
-    return res;
-  } else {
-    return { ok: 0 };
   }
 });
 
@@ -494,41 +444,13 @@ questionschema.method("undoDownvote", async function(user) {
   Comments
   --------
 */
-questionschema.method("addComment", async function(comment) {
-  await comment.save().catch(err => {
-    throw err;
-  });
-  const res = await this.model("Question")
-    .updateOne({ _id: this._id }, { $addToSet: { comments: comment._id } })
-    .catch(err => {
-      throw err;
-    });
-  res._id = comment._id;
-  return res;
-});
-
-questionschema.method("deleteComment", async function(comment, user) {
-  comment = await Comment.findById(comment._id).catch(err => {
-    throw err;
-  });
-  if (comment) {
-    if (!comment.user.equals(user._id)) {
-      const err = new Error("You can't delete someone else's comment");
-      err.statusCode = 401;
-      throw err;
-    }
-    const deleted = await Comment.deleteOne({ _id: comment._id });
-    await this.model("Question")
-      .updateOne({ _id: this._id }, { $pull: { comments: comment._id } })
-      .catch(err => {
-        throw err;
-      });
-    return deleted;
-  } else {
-    const err = new Error("No comment with this _id exists");
-    err.statusCode = 404;
-    throw err;
-  }
+questionschema.method("addComment", async function (comment) {
+  await comment.save();
+  await this.model("Question").updateOne(
+    { _id: this._id },
+    { $addToSet: { comments: comment._id } }
+  );
+  return comment;
 });
 
 /*
@@ -543,12 +465,10 @@ questionschema.method("deleteComment", async function(comment, user) {
   --------
 */
 
-questionschema.method("answerQuestion", async function(answer) {
+questionschema.method("answerQuestion", async function (answer) {
   const question = await Question.findById(this._id);
   question.answers.push(answer);
-  question.save().catch(err => {
-    throw err;
-  });
+  await question.save();
   return answer;
 });
 
@@ -558,7 +478,7 @@ questionschema.method("answerQuestion", async function(answer) {
   --------
 */
 
-questionschema.method("deleteAnswer", function(answer) {
+questionschema.method("deleteAnswer", function (answer) {
   return this.model("Question").updateOne(
     { _id: this._id },
     { $pull: { answers: { _id: answer._id } } }
@@ -571,80 +491,71 @@ questionschema.method("deleteAnswer", function(answer) {
   --------
 */
 
-questionschema.method("upvoteAnswer", async function(answer, user) {
+questionschema.method("upvoteAnswer", async function (answer, user) {
   const query = this.model("Question").updateOne(
     { "answers._id": answer._id },
     { $inc: { "answers.$.votes": 1 } }
   );
+
   user = await User.findById(user._id).select("meta.votes");
+
   if (user.meta.votes) {
     const removeFromDownvotes = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { answerDownvotes: answer._id } }
     );
+
     if (removeFromDownvotes.nModified === 1) {
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
 
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $addToSet: { answerUpvotes: answer._id } }
     );
+
     if (res.nModified === 1) {
       // update (increment) the votes on this answer
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
+
     return res;
   } else {
     const vote = new Vote({
-      answerUpvotes: [answer._id]
+      answerUpvotes: [answer._id],
     });
-    await vote.save().catch(err => {
-      throw err;
-    });
+
+    await vote.save();
     user.meta.votes = vote._id; // holy shit
-    await user.save().catch(err => {
-      throw err;
-    });
-    return query.exec();
+    await user.save();
+    return await query.exec();
   }
 });
 
-questionschema.method("undoUpvoteAnswer", async function(answer, user) {
+questionschema.method("undoUpvoteAnswer", async function (answer, user) {
   user = await User.findById(user._id).select("meta.votes");
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { answerUpvotes: answer._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (res.nModified === 1) {
       // update (decrement) the votes on this answer
-      await this.model("Question")
-        .updateOne(
-          { "answers._id": answer._id },
-          { $inc: { "answers.$.votes": -1 } }
-        )
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Question").updateOne(
+        { "answers._id": answer._id },
+        { $inc: { "answers.$.votes": -1 } }
+      );
     }
-    return res;
-  } else {
-    return { ok: 0 };
   }
 });
 
-questionschema.method("downvoteAnswer", async function(answer, user) {
+questionschema.method("downvoteAnswer", async function (answer, user) {
   const query = this.model("Question").updateOne(
     { "answers._id": answer._id },
     { $inc: { "answers.$.votes": -1 } }
   );
+
   user = await User.findById(user._id).select("meta.votes");
 
   if (user.meta.votes) {
@@ -652,67 +563,45 @@ questionschema.method("downvoteAnswer", async function(answer, user) {
     const removeFromUpvotes = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { answerUpvotes: answer._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (removeFromUpvotes.nModified === 1) {
       // update (decrement) the votes on this question
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $addToSet: { answerDownvotes: answer._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (res.nModified === 1) {
       // update (decrement) the votes on this answer
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
     return res;
   } else {
     const vote = new Vote({
-      answerDownvotes: [answer._id]
+      answerDownvotes: [answer._id],
     });
-    await vote.save().catch(err => {
-      throw err;
-    });
+    await vote.save();
     user.meta.votes = vote._id;
-    await user.save().catch(err => {
-      throw err;
-    });
-
-    return query.exec();
+    await user.save();
+    return await query.exec();
   }
 });
 
-questionschema.method("undoDownvoteAnswer", async function(answer, user) {
+questionschema.method("undoDownvoteAnswer", async function (answer, user) {
   user = await User.findById(user._id).select("meta.votes");
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { answerDownvotes: answer._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (res.nModified === 1) {
       // update (increment) the votes on this answer
-      await this.model("Question")
-        .updateOne(
-          { "answers._id": answer._id },
-          { $inc: { "answers.$.votes": 1 } }
-        )
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Question").updateOne(
+        { "answers._id": answer._id },
+        { $inc: { "answers.$.votes": 1 } }
+      );
     }
-    return res;
-  } else {
-    return { ok: 0 };
   }
 });
 
@@ -722,90 +611,74 @@ questionschema.method("undoDownvoteAnswer", async function(answer, user) {
   --------
 */
 
-questionschema.method("addCommentOnAnswer", async function(answer, comment) {
-  await comment.save().catch(err => {
-    throw err;
-  });
-  const res = await this.model("Question")
-    .updateOne(
-      { "answers._id": answer._id },
-      { $addToSet: { "answers.$.comments": comment._id } }
-    )
-    .catch(err => {
-      throw err;
-    });
-  res._id = comment._id;
-  return res;
+questionschema.method("addCommentOnAnswer", async function (answer, comment) {
+  await comment.save();
+  const res = await this.model("Question").updateOne(
+    { "answers._id": answer._id },
+    { $addToSet: { "answers.$.comments": comment._id } }
+  );
+  return comment;
 });
 
-questionschema.method("deleteCommentFromAnswer", async function(
-  answer,
-  user,
-  comment
-) {
-  comment = await Comment.findById({ _id: comment._id }).catch(err => {
-    throw err;
-  });
-  if (comment) {
-    if (!comment.user.equals(user._id)) {
-      const err = new Error("You can't delete someone else's comment");
-      err.statusCode = 401;
+questionschema.method(
+  "deleteCommentFromAnswer",
+  async function (answer, user, comment) {
+    comment = await Comment.findById({ _id: comment._id }).catch((err) => {
+      throw err;
+    });
+    if (comment) {
+      if (!comment.user.equals(user._id)) {
+        const err = new Error("You can't delete someone else's comment");
+        err.statusCode = 401;
+        throw err;
+      }
+      const deleted = await Comment.deleteOne({ _id: comment._id });
+      await this.model("Question")
+        .updateOne(
+          { "answers._id": answer._id },
+          { $pull: { "answers.$.comments": comment._id } }
+        )
+        .catch((err) => {
+          throw err;
+        });
+      return deleted;
+    } else {
+      const err = new Error("No comment with this _id exists");
+      err.statusCode = 404;
       throw err;
     }
-    const deleted = await Comment.deleteOne({ _id: comment._id });
-    await this.model("Question")
-      .updateOne(
-        { "answers._id": answer._id },
-        { $pull: { "answers.$.comments": comment._id } }
-      )
-      .catch(err => {
-        throw err;
-      });
-    return deleted;
-  } else {
-    const err = new Error("No comment with this _id exists");
-    err.statusCode = 404;
-    throw err;
   }
-});
+);
 
-questionschema.method("proposeUpdateOnAnswer", async function(answer) {
+questionschema.method("proposeUpdateOnAnswer", async function (answer) {
   const res = {};
-  const orig = await this.model("Question")
-    .findOne({ "answers._id": answer._id }, { "answers.$": 1 })
-    .catch(err => {
-      throw err;
-    });
+  const orig = await this.model("Question").findOne(
+    { "answers._id": answer._id },
+    { "answers.$": 1 }
+  );
+
   if (!orig || orig == null) {
-    const err = new Error("Answer not found");
-    err.statusCode = 404;
-    throw err;
+    throw new APIError(404, "Answer not found");
   }
 
   const currentAnswer = orig.answers[0]; // God help us
-  const proposed = {
-    body: answer.body
-  };
-  const xorig = {
-    body: currentAnswer.body
-  };
+
+  const proposed = { body: answer.body };
+  const xorig = { body: currentAnswer.body };
 
   // lets compute the delta
   const computedDelta = jsondiffpatch.diff(xorig, proposed); // don't change the order original first then proposed
 
   if (!computedDelta || computedDelta == undefined) {
-    const err = new Error("No changes");
-    err.statusCode = 400;
-    throw err;
+    throw new APIError(400, "No changes");
   }
 
-  const OP = await User.findById(currentAnswer.user).catch(err => {
-    throw err;
-  });
+  const OP = await User.findById(currentAnswer.user);
+
   // lets store this delta
   const mdelta = new Delta({
     delta: computedDelta,
-    proposer: answer.user._id
+    proposer: answer.user._id,
   });
 
   if (answer.user.equals(OP._id) || OP.role == "Mod" || OP.role == "Admin") {
@@ -813,41 +686,31 @@ questionschema.method("proposeUpdateOnAnswer", async function(answer) {
     // immediately, or in other words, approve
     mdelta.approver = OP._id;
     mdelta.approvedAt = new Date();
-    await this.model("Question")
-      .updateOne(
-        { "answers._id": answer._id },
-        {
-          $set: {
-            "answers.$.body": proposed.body
-          }
-        }
-      )
-      .catch(err => {
-        throw err;
-      });
-    res.message = "Updated";
+    await this.model("Question").updateOne(
+      { "answers._id": answer._id },
+      {
+        $set: {
+          "answers.$.body": proposed.body,
+        },
+      }
+    );
   }
 
   // now save the history
-  let history = await History.findOne({ post: answer._id }).catch(err => {
-    throw err;
-  });
+  let history = await History.findOne({ post: answer._id });
+
   if (history) {
     // get all the deltas by this user
     const check = await History.findOne({
       post: answer._id,
       "deltas.proposer": answer.user,
-      "deltas.approvedAt": { $exists: false }
-    }).catch(err => {
-      throw err;
+      "deltas.approvedAt": { $exists: false },
     });
 
     if (check == null) {
       history.deltas.push(mdelta);
     } else {
-      const err = new Error("Await for previous one to be approved");
-      err.statusCode = 400;
-      throw err;
+      throw new APIError(400, "Await for previous one to be approved");
     }
     // check if delta already exists
     // const check = await History.findOne({ post: answer._id, 'deltas.delta': mdelta.delta }, { 'deltas.$.delta': 1 }).catch(err => { throw err })
@@ -868,60 +731,49 @@ questionschema.method("proposeUpdateOnAnswer", async function(answer) {
       deltas: [mdelta],
       post: answer._id,
       original: xorig,
-      onModel: "Answer"
+      onModel: "Answer",
     });
   }
 
-  await history.save().catch(err => {
-    throw err;
-  });
-  res.history = history._id;
-  res.delta = mdelta._id;
-  return res;
+  await history.save();
+  return { history: history._id, delta: mdelta._id, msg: "Ok." };
 });
 
-questionschema.method("approveUpdateOnAnswer", async function(delta, user) {
+questionschema.method("approveUpdateOnAnswer", async function (delta, user) {
   const history = await History.findOne(
     { "deltas._id": delta._id },
     { "deltas.$": 1, post: 1 }
-  ).catch(err => {
-    throw err;
-  });
+  );
+
   if (history && history != null) {
-    const post = await this.model("Question")
-      .findOne({ "answers._id": history.post }, { "answers.$": 1 })
-      .catch(err => {
-        throw err;
-      });
-    const OP = await User.findOne({ _id: post.answers[0].user }).catch(err => {
-      throw err;
-    });
+    const post = await this.model("Question").findOne(
+      { "answers._id": history.post },
+      { "answers.$": 1 }
+    );
+
+    const OP = await User.findOne({ _id: post.answers[0].user });
 
     if (user.role == "Admin" || user.role == "Mod" || OP._id.equals(user._id)) {
       const mdelta = history.deltas[0];
       if (mdelta.approvedAt) {
         // it means it has already been approved
-        const err = new Error("Already approved");
-        err.statusCode = 400;
-        throw err;
+        throw new APIError(400, "Already approved");
       }
+
       const patched = {
-        body: post.answers[0].body
+        body: post.answers[0].body,
       };
       jsondiffpatch.patch(patched, mdelta.delta);
+
       // save the answer
-      await this.model("Question")
-        .updateOne(
-          { "answers._id": post.answers[0]._id },
-          {
-            $set: {
-              "answers.$.body": patched.body
-            }
-          }
-        )
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Question").updateOne(
+        { "answers._id": post.answers[0]._id },
+        {
+          $set: {
+            "answers.$.body": patched.body,
+          },
+        }
+      );
 
       // update the history
       await History.updateOne(
@@ -929,29 +781,26 @@ questionschema.method("approveUpdateOnAnswer", async function(delta, user) {
         {
           $set: {
             "deltas.$.approver": user._id,
-            "deltas.$.approvedAt": new Date()
-          }
+            "deltas.$.approvedAt": new Date(),
+          },
         }
-      ).catch(err => {
-        throw err;
-      });
+      );
+
       return post;
     } else {
-      const err = new Error("You cannot approve this edit");
-      err.statusCode = 404;
-      throw err;
+      throw new APIError(404, "You cannot approve this edit");
     }
   } else {
-    const err = new Error("No delta with this id exists");
-    err.statusCode = 404;
-    throw err;
+    throw new APIError(404, "No delta with this id exists");
   }
 });
 
 // create model
 const Question = mongoose.model("Question", questionschema);
-Question.on("index", err => {
-  console.error(err);
+Question.on("index", (err) => {
+  if (err) {
+    console.error(err);
+  }
 });
 
 module.exports = Question;

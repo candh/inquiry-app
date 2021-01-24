@@ -1,12 +1,10 @@
-// from https://dev.to/nedsoft/central-error-handling-in-express-3aej
+// idea from https://dev.to/nedsoft/central-error-handling-in-express-3aej
 const logger = require("./logger");
 
-class ErrorHandler extends Error {
+class APIError extends Error {
   constructor(code, msg) {
     super();
     this.statusCode = code;
-    this.messages = [];
-    this.ErrorHandler = true;
     if (Array.isArray(msg)) {
       this.messages = msg;
     } else {
@@ -15,23 +13,34 @@ class ErrorHandler extends Error {
   }
 }
 
-const handleError = (err, req, res, next) => {
-  // JWT errors
-  if (err.name == "UnauthorizedError") {
-    err = new ErrorHandler(401, err.message); // chalo hamari trf se hi aya hai
-  }
-
-  let { statusCode, messages } = err;
-  if (!err.ErrorHandler || res.headerSent) {
-    return next(err);
-  }
-
+const handleErrors = (err, req, res, next) => {
+  // log it
   logger.error(err.stack);
-  res.status(statusCode).json({
-    status: "error",
-    statusCode,
-    messages: messages
-  });
+  if (err instanceof APIError) {
+    // send it
+    let { statusCode, messages } = err;
+    res.status(statusCode).json({
+      status: "error",
+      statusCode,
+      messages: messages,
+    });
+  } else {
+    // JWT errors
+    let statusCode = 500;
+    let message = "Internal Server Error. If you see this, contact developer.";
+
+    if (err.name == "UnauthorizedError") {
+      statusCode = 401;
+      message = "Invalid JWT.";
+    }
+
+    // send 500 everytime otherwise
+    res.status(statusCode).json({
+      status: "Error",
+      statusCode,
+      message,
+    });
+  }
 
   next();
 };
@@ -39,8 +48,12 @@ const handleError = (err, req, res, next) => {
 function processValidationErrors(req, res, next) {
   const validationResult = require("express-validator").validationResult;
   const errors = validationResult(req);
-  if (!errors.isEmpty()) throw new ErrorHandler(500, errors.array());
+  if (!errors.isEmpty()) throw new APIError(400, errors.array());
   next();
 }
 
-module.exports = { ErrorHandler, handleError, processValidationErrors };
+module.exports = {
+  APIError,
+  handleErrors,
+  processValidationErrors,
+};

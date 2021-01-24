@@ -3,100 +3,78 @@ const User = require("./User");
 const Question = require("./Question");
 const Answer = require("./Answer");
 const Vote = require("./Vote");
+const { APIError } = require("../helpers/error");
 
 const commentschema = mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
+      ref: "User",
     },
     body: String,
     meta: {
       votes: {
         type: Number,
-        default: 0
-      }
-    }
+        default: 0,
+      },
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 
-commentschema.method("upvote", async function() {
+commentschema.method("getComment", async function () {
+  return this.model("Comment").findById(this._id);
+});
+
+commentschema.method("upvote", async function () {
   const query = this.model("Comment").updateOne(
     { _id: this._id },
     { $inc: { "meta.votes": 1 } }
   );
-  const user = await User.findById(this.user)
-    .select("meta.votes")
-    .catch(err => {
-      throw err;
-    });
+  const user = await User.findById(this.user).select("meta.votes");
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $addToSet: { commentUpvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
     if (res.nModified === 1) {
-      await query.exec().catch(err => {
-        throw err;
-      });
+      await query.exec();
     }
-    return res;
   } else {
     const vote = new Vote({
-      commentUpvotes: [this._id]
+      commentUpvotes: [this._id],
     });
-    await vote.save().catch(err => {
-      throw err;
-    });
+    await vote.save();
     user.meta.votes = vote._id;
-    await user.save().catch(err => {
-      throw err;
-    });
-    return query.exec();
+    await user.save();
+    await query.exec();
   }
 });
 
-commentschema.method("undoUpvote", async function() {
-  const user = await User.findById(this.user)
-    .select("meta.votes")
-    .catch(err => {
-      throw err;
-    });
+commentschema.method("undoUpvote", async function () {
+  const user = await User.findById(this.user).select("meta.votes");
   if (user.meta.votes) {
     const res = await Vote.updateOne(
       { _id: user.meta.votes },
       { $pull: { commentUpvotes: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
+
     if (res.nModified === 1) {
-      await this.model("Comment")
-        .updateOne({ _id: this._id }, { $inc: { "meta.votes": -1 } })
-        .catch(err => {
-          throw err;
-        });
+      await this.model("Comment").updateOne(
+        { _id: this._id },
+        { $inc: { "meta.votes": -1 } }
+      );
     }
-    return res;
-  } else {
-    const err = new Error("Can't undo upvote");
-    throw err;
   }
 });
 
-commentschema.method("delete", async function() {
+commentschema.method("delete", async function () {
   const comment = await this.model("Comment").findById(this._id);
   if (comment.user.equals(this.user)) {
     // delete this comment
-    const res = await this.model("Comment")
-      .deleteOne({ id: this._id })
-      .catch(err => {
-        throw err;
-      });
+    const res = await this.model("Comment").deleteOne({ _id: this._id });
 
     // perform cleanup
     // * remove comment from question (one to one relation)
@@ -104,24 +82,15 @@ commentschema.method("delete", async function() {
     await Question.updateOne(
       { comments: this._id },
       { $pull: { comments: this._id } }
-    ).catch(err => {
-      throw err;
-    });
+    );
 
     // * perform cleanup on the answer
-
-    Question.updateOne(
+    await Question.updateOne(
       { "answers.comments": this._id },
       { $pull: { "answers.$.comments": this._id } }
-    ).catch(err => {
-      throw err;
-    });
-
-    return res;
+    );
   } else {
-    const err = new Error("You cannot delete this comment. FOH");
-    err.statusCode = 400;
-    throw err;
+    throw new APIError(400, "You cannot delete this comment. FOH");
   }
 });
 
