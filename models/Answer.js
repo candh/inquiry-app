@@ -32,7 +32,6 @@ answerschema.method("getAnswer", function () {
     .findOne({ "answers._id": this._id })
     .populate("answers.user", "username meta")
     .populate("answers.comments")
-    .select("answers.$")
     .exec();
 });
 

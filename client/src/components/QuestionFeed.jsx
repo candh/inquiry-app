@@ -9,18 +9,21 @@ import Spinner from "./Loader";
 class QuestionFeed extends React.Component {
   constructor(props) {
     super(props);
+
     props.match.params.page =
       Number(props.match.params.page ? props.match.params.page : 1) || 1;
+
     if (props.match.params.page <= 0) {
       props.match.params.page = 1;
     }
+
     // TOOD: if params.page is a string, redirect to /questions/1
     this.state = {
       curPage: props.match.params.page,
       limit: 10,
       data: [],
       noResults: false,
-      url: ""
+      url: "",
     };
 
     this.nextPage = this.nextPage.bind(this);
@@ -56,23 +59,23 @@ class QuestionFeed extends React.Component {
 
   getQuestions() {
     const url = this.buildUrl();
-    console.log(url);
+    // console.log(url);
     Axios.get(url)
-      .then(res => {
+      .then((res) => {
         if (res.data.length === 0) {
           this.setState({ noResults: true });
         }
         console.log(res.data);
         this.setState({ data: res.data });
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err.response);
         throw err;
       });
   }
 
   nextPage() {
-    this.setState({ curPage: this.state.curPage + 1 }, state => {
+    this.setState({ curPage: this.state.curPage + 1 }, (state) => {
       this.props.history.replace("/questions/" + this.state.curPage + "/");
       this.getQuestions();
     });
@@ -80,7 +83,7 @@ class QuestionFeed extends React.Component {
 
   prevPage() {
     console.log("called");
-    this.setState({ curPage: this.state.curPage - 1 }, state => {
+    this.setState({ curPage: this.state.curPage - 1 }, (state) => {
       this.props.history.replace("/questions/" + this.state.curPage + "/");
       this.getQuestions();
     });
@@ -89,6 +92,10 @@ class QuestionFeed extends React.Component {
   componentDidMount() {
     this.getQuestions();
   }
+
+  // componentDidUpdate() {
+  //   this.getQuestions();
+  // }
 
   // static async getDerivedStateFromProps(props, state) {
   //   console.log(props.match.params.page)
@@ -172,7 +179,7 @@ class QuestionFeed extends React.Component {
         )}
         {!this.state.noResults && this.state.data.length === 0 && <Spinner />}
         {this.state.data &&
-          this.state.data.map(v => (
+          this.state.data.map((v) => (
             <QuestionPreview question={v} key={v._id} />
           ))}
         {this.state.data.length > 0 && (

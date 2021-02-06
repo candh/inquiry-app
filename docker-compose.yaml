@@ -1,0 +1,35 @@
+version: "3.7"
+
+services:
+  inquiry:
+    build:
+      context: .
+    ports:
+      - 4000:4000
+    environment:
+      jwtsecret: c12h16n2
+      MONGODB_URI: mongodb://user:secret@mongodb:27017/inquiry
+    volumes:
+      - ./:/app
+      # https://stackoverflow.com/questions/29181032/add-a-volume-to-docker-but-exclude-a-sub-folder
+      - /app/node_modules/
+      - /app/client/node_modules/
+      - /app/client/build/
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_DB_USER: user
+      MONGO_DB_PSWD: secret
+      MONGO_DB_NAME: inquiry
+    volumes:
+      - ./mongo-init.sh:/docker-entrypoint-initdb.d/mongo-init.sh
+      - inquiry-mongo-vol:/data/db
+
+volumes:
+  inquiry-mongo-vol:

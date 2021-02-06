@@ -6,7 +6,7 @@ import {
   BrowserRouter as Router,
   Switch,
   Route,
-  Redirect
+  Redirect,
 } from "react-router-dom";
 import SignupForm from "./components/SignupForm";
 import QuestionFeed from "./components/QuestionFeed";
@@ -56,7 +56,7 @@ class App extends React.Component {
     return (
       <Router>
         <Route
-          render={props => {
+          render={(props) => {
             return <Navbar {...props} loggedIn={this.state.loggedIn} />;
           }}
         />
@@ -65,7 +65,7 @@ class App extends React.Component {
         <Switch>
           <Route
             path="/login"
-            render={props => {
+            render={(props) => {
               return this.state.loggedIn ? (
                 <Redirect to="/questions" />
               ) : (
@@ -76,7 +76,7 @@ class App extends React.Component {
 
           <Route
             path="/signup"
-            render={props => {
+            render={(props) => {
               return this.state.loggedIn ? (
                 <Redirect to="/questions" />
               ) : (
@@ -85,11 +85,15 @@ class App extends React.Component {
             }}
           />
 
-          <Route path="/search" component={SearchResults} />
+          <Route
+            path="/search"
+            // render={(props) => <SearchResults {...props} key={Date.now()} />}
+            render={(props) => <SearchResults {...props} />}
+          />
 
           <Route
             path="/me"
-            render={props => {
+            render={(props) => {
               return this.state.loggedIn ? (
                 <UserPage
                   {...props}
@@ -105,7 +109,7 @@ class App extends React.Component {
 
           <Route
             path="/users/:id"
-            render={props => {
+            render={(props) => {
               return <UserPage id={props.match.params.id} />;
             }}
           />
@@ -116,7 +120,7 @@ class App extends React.Component {
           <Route
             exact
             path="/questions/:page"
-            render={props => (
+            render={(props) => (
               <QuestionFeed {...props} limit="10" sort="createdAt" />
             )}
           />
@@ -127,14 +131,14 @@ class App extends React.Component {
           <Route
             exact
             path="/question/:id"
-            render={props => (
+            render={(props) => (
               <QuestionPage {...props} loggedIn={this.state.loggedIn} />
             )}
           />
 
           <Route
             path="/"
-            render={props => {
+            render={(props) => {
               return this.state.loggedIn ? (
                 <Redirect to="/questions" />
               ) : (

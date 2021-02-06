@@ -1,44 +1,15 @@
-import React from 'react'
-import QuestionFeed from './QuestionFeed'
-import qs from 'query-string'
+import React, { useEffect, useState } from "react";
+import QuestionFeed from "./QuestionFeed";
+import qs from "query-string";
 
-class SearchResults extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = {
-      q: ''
-    }
-  }
+function SearchResults(props) {
+  const [query, setQuery] = useState(qs.parse(props.location.search).q || "");
 
-  // componentWillReceiveProps() {
-  // }
+  useEffect(() => {
+    setQuery(qs.parse(props.location.search).q);
+  }, [qs.parse(props.location.search).q]);
 
-  // componentWillReceiveProps() {
-  //   console.log(this.props.location)
-  //   const parsed = qs.parse(this.props.location.search)
-  //   this.setState({ q: parsed.q })
-  //   console.log(parsed)
-  // }
-
-  // componentWillReceiveProps() {
-  //   this.forceUpdate()
-  // }
-
-  // componentWillUpdate() {
-  //   const parsed = qs.parse(this.props.location.search)
-  //   this.setState({ q: parsed.q })
-
-  // }
-
-  static getDerivedStateFromProps(props, state) {
-    const parsed = qs.parse(props.location.search)
-    state.q = parsed.q
-    return state
-  }
-
-  render() {
-    return <QuestionFeed q={this.state.q} {...this.props} ></QuestionFeed>
-  }
+  return <QuestionFeed key={query} q={query} {...props}></QuestionFeed>;
 }
 
-export default SearchResults
+export default SearchResults;
