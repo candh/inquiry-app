@@ -8,6 +8,7 @@ const apiRouter = require("./routes/api");
 const { handleErrors } = require("./helpers/error");
 const fs = require("fs");
 const config = require("./config");
+const db = require("./db/database"); // opens the connection for the following routers
 
 var app = express();
 

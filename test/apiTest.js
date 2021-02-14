@@ -1,13 +1,37 @@
 // *****************************************
 /* Load the .env file */
-require("dotenv").config();
-const db = require("../db/database");
+var express = require("express");
+const apiRouter = require("../routes/api");
 const chai = require("chai"),
   expect = chai.expect;
 const faker = require("faker");
 const axios = require("axios").default;
-const baseUrl = "http://localhost:4000/api";
+const { APIError } = require("../helpers/error");
+const mongoose = require("mongoose");
+const { MongoMemoryServer } = require("mongodb-memory-server-global-4.4");
+const process = require("process");
 // ******************************************
+
+// express setup
+var app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use("/api", apiRouter);
+
+// small error handler
+app.use(function (err, req, res, next) {
+  if (err instanceof APIError) {
+    let { statusCode } = err;
+    res.sendStatus(statusCode);
+  } else {
+    let statusCode = 500;
+    if (err.name == "UnauthorizedError") {
+      statusCode = 401;
+    }
+    res.sendStatus(statusCode);
+  }
+  next();
+});
 
 // helpers
 function generateAuthHeader(token) {
@@ -67,18 +91,27 @@ let user1 = {
 // globals
 let token1, token2, token3, deltaId1, deltaId2, answerDelta1, answerDelta2;
 
-describe("API Testing", function () {
+// server
+let server, mongoServer;
+const baseUrl = "http://localhost:4001/api";
+
+const mongod = describe("API Testing", function () {
   before(async function () {
-    this.timeout(10000);
-    let con = db.getConnection();
-    // clear entire database
-    return con.dropDatabase();
+    // setup API server
+    server = app.listen(4001);
+    // setup mongo server
+    mongoServer = new MongoMemoryServer();
+    // connect to via mongoose
+    const uri = await mongoServer.getUri();
+    await mongoose.connect(uri, {
+      useCreateIndex: true,
+      useUnifiedTopology: true,
+      useNewUrlParser: true,
+    });
   });
 
   describe("/users", function () {
     it("should create 3 User", async function () {
-      this.timeout(10000);
-
       let res1 = await axios.post(baseUrl + "/users/register", user1);
       let res2 = await axios.post(baseUrl + "/users/register", user2);
       let res3 = await axios.post(baseUrl + "/users/register", user3);
@@ -632,6 +665,8 @@ describe("API Testing", function () {
   });
 
   after(async function () {
-    db.close();
+    await mongoose.disconnect();
+    await mongoServer.stop();
+    server.close();
   });
 });

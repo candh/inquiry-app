@@ -1,8 +1,6 @@
 const express = require("express");
 const router = express.Router();
 
-const db = require("../db/database"); // opens the connection for the following routers
-
 const answersRouter = require("./routers/answers");
 const questionsRouter = require("./routers/questions");
 const searchRouter = require("./routers/search");

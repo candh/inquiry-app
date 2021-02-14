@@ -7,7 +7,7 @@
     "start": "node ./bin/www",
     "load": "mocha test/db/index.js --timeout 50000",
     "heroku-postbuild": "cd client && npm install && npm run build",
-    "test": "mocha test/apiTest.js --timeout 4000"
+    "test": "jwtsecret=testsecret mocha test/apiTest.js --timeout 4000"
   },
   "repository": {
     "type": "git",
@@ -46,6 +46,7 @@
     "axios": "^0.21.1",
     "chai": "^4.2.0",
     "faker": "^5.1.0",
-    "mocha": "^8.2.1"
+    "mocha": "^8.2.1",
+    "mongodb-memory-server-global-4.4": "^6.9.3"
   }
 }
