@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [master]
 
-defaults:
-  run:
-    working-directory: inquiry-app
-
 jobs:
   test:
     runs-on: ubuntu-latest
